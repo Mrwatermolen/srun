@@ -1,0 +1,7 @@
+{
+  "protocol": "https",
+  "host": "host",
+  "port": 443,
+  "username": "123456",
+  "password": "7890"
+}
