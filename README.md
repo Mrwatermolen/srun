@@ -2,45 +2,81 @@
 
 SRun authentication login
 
+## Usage
+
+`username`, `password` and `host` are used to login
+
+```bash
+srun --username 123456 --password 7890 --host host
+```
+
+Use `--help` to get more information
+
+---
+
+`config.json` file is used to login
+
+```bash
+srun --config <path to config.json>
+```
+
+### Config file
+
+Json format
+
+Required fields:
+- `username` the username of the account. `string`
+- `password` the password of the account. `string`
+- `host` the host of the server. `string`
+- `port` the port of the server. `int`
+
+Optional fields:
+- `protocol` the protocol of the server. Type is `string` ("http" or "https") (default: "http")
+- `ip` the client ip address. Type is `string` (default: "") (emptying this field to automatically obtain the ip address)
+- `ac_id`. Type is `int` (default: 1)
+- `os` the operating system of the client. Type is `string` (default: "Linux")
+- `os_name` the name of the operating system. Type is `string` (default: "Linux")
+
+Example:
+
+```json
+{
+  "username": "123456",
+  "password": "7890",
+  "host": "host",
+  "port": 443,
+  "protocol": "https"
+}
+```
+
 ## Build
 
-prerequisites:
-- C++20
-- [OpenSSL](https://www.openssl.org/)
-- [ASIO](https://think-async.com/Asio/)
+### Dependencies
+
+- [ASIO](https://think-async.com/Asio/) (without boost)
 - [Nlohmann JSON](https://github.com/nlohmann/json)
+- Optional: [OpenSSL](https://www.openssl.org/)  (for https)
+
+### Build with CMake
 
 ```bash
 cmake -DCMAKE_BUILD_TYPE=Release -B build
 cmake --build build
 ```
 
-executable will be in `build/bin/srun`
+the executable will be in `build/bin` directory
 
-## Usage
+### Support for HTTPS
 
-create a `config.json` file in the working directory with the following content
-  
-```json
-{
-  "protocol": "https",
-  "host": "host",
-  "port": 443,
-  "username": "123456",
-  "password": "7890"
-}
-```
+This feature is disabled by default.
 
-optional fields:
-- `ip` the ip address of the host. Type is `string` (default: "")
-- `ac_id`. Type is `int` (default: 1)
+If you need to support https, you need to install OpenSSL on your system. Then use the following command to enable support for https.
 
+```cmake
+cmake -DSRUN_SSL_ENABLED=ON -DCMAKE_BUILD_TYPE=Release -B build
+cmake --build build
+``` 
 
-run the executable
-
-```bash
-./srun
-```
 ## Acknowledgements
 
 - [srun](https://github.com/zu1k/srun)
