@@ -80,7 +80,6 @@ int main(int argc, char *argv[]) {
   srun::SRunClient client{};
   try {
     if (!config_file.empty()) {
-      std::cout << config_file << std::endl;
       client.init(config_file);
     } else {
       auto protocol = srun_program.get<std::string>("--protocol");

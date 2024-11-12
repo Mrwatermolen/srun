@@ -302,7 +302,7 @@ auto SRunClient::login() -> void {
 
 auto SRunClient::logout() -> void {
   if (_ip.empty()) {
-    fetchIp();
+    _ip = fetchIp();
   }
 
   auto unix_time = std::chrono::duration_cast<std::chrono::seconds>(
