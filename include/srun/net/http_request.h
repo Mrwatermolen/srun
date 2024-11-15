@@ -47,9 +47,9 @@ inline auto urlDecode(std::string_view data) {
 }
 
 class HttpRequest {
-  static constexpr inline std::string_view CRLF = "\r\n";
-  static constexpr inline std::string_view COLON = ": ";
-  static constexpr inline std::string_view SPACE = " ";
+  static constexpr std::string_view CRLF = "\r\n";
+  static constexpr std::string_view COLON = ": ";
+  static constexpr std::string_view SPACE = " ";
 
  public:
   enum Method : std::uint8_t { INVALID, GET, POST, PUT, kDELETE, HEAD };

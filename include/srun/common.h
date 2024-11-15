@@ -151,6 +151,21 @@ struct ChallengeResponse {
   std::string _challenge;
 };
 
+struct LoginResponse {
+  LoginResponse() = default;
+
+  explicit LoginResponse(std::string_view data);
+
+  auto ok() const { return _err_response.ok(); }
+
+  auto errResponse() const { return _err_response; }
+
+  auto accessToken() const { return _access_token; }
+
+  ErrResponse _err_response;
+  std::string _access_token;
+};
+
 }  // namespace srun
 
 #endif  // __SRUN_CORE_COMMON_H__

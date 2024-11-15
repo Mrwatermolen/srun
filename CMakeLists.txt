@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(SRUN VERSION 0.0.1 LANGUAGES CXX)
+project(SRUN VERSION 0.0.2 LANGUAGES CXX)
 
 set(SRUN_MAIN_PROJECT OFF)
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
@@ -23,13 +23,14 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 option(SRUN_SSL_ENABLED "Enable SSL support" OFF)
 
 find_package(nlohmann_json REQUIRED)
-find_package(ASIO)
 
 set(SRUN_EXTERNAL_LIB nlohmann_json::nlohmann_json)
 
 if(ASIO_FOUND)
     set(SRUN_EXTERNAL_LIB ${SRUN_EXTERNAL_LIB} asio::asio)
 endif()
+
+set(SRUN_SSL_ENABLED ON)
 
 if(SRUN_SSL_ENABLED)
     message(STATUS "SSL support enabled")
@@ -39,11 +40,66 @@ if(SRUN_SSL_ENABLED)
 endif()
 
 add_subdirectory(third_party)
-
-set(SRUN_EXTERNAL_LIB ${SRUN_EXTERNAL_LIB} stbrumme_hash_library)
-
+set(SRUN_PUBLIC_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/include)
 link_libraries(${SRUN_EXTERNAL_LIB})
-
-include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/src/include)
+include_directories(${SRUN_PUBLIC_INCLUDE_DIRS} ${PROJECT_SOURCE_DIR}/third_party/hash_library/include)
 
 add_subdirectory(src)
+
+option(SRUN_ENABLED_INSTALL_LIB "Enable installation of library" OFF)
+option(SRUN_ENABLED_INSTALL_BIN "Enable installation of binary" ON)
+set(SRUN_INSTALL_TARGETS "")
+
+if(SRUN_ENABLED_INSTALL_LIB)
+    message(STATUS "Enabling installation of library")
+    set(SRUN_INSTALL_TARGETS ${SRUN_INSTALL_TARGETS} srun)
+endif()
+
+if(SRUN_ENABLED_INSTALL_BIN)
+    message(STATUS "Enabling installation of binary")
+    set(SRUN_INSTALL_TARGETS ${SRUN_INSTALL_TARGETS} srun_cli)
+endif()
+
+install(TARGETS ${SRUN_INSTALL_TARGETS}
+    EXPORT srun-targets
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+include(CMakePackageConfigHelpers)
+
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/Config.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/srun-config.cmake
+    INSTALL_DESTINATION lib/cmake/srun
+)
+
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/srun-config-version.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY AnyNewerVersion
+)
+
+export(EXPORT srun-targets
+    FILE ${CMAKE_BINARY_DIR}/srun-targets.cmake
+    NAMESPACE srun::
+)
+
+if(SRUN_ENABLED_INSTALL_LIB)
+
+    install(EXPORT srun-targets
+        FILE srun-targets.cmake
+        NAMESPACE srun::
+        DESTINATION lib/cmake/srun
+    )
+
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/srun-config.cmake ${CMAKE_CURRENT_BINARY_DIR}/srun-config-version.cmake
+        DESTINATION lib/cmake/srun
+    )
+
+    install(DIRECTORY ${SRUN_PUBLIC_INCLUDE_DIRS}/srun
+        DESTINATION include
+    )
+        
+endif()

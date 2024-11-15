@@ -1,2 +1,5 @@
 aux_source_directory(. SRUN_NET_SOURCES)
-add_library(srun_net ${SRUN_NET_SOURCES})
+add_library(srun_net OBJECT ${SRUN_NET_SOURCES})
+target_link_libraries(srun_net PRIVATE ${SRUN_EXTERNAL_LIB})
+target_include_directories(srun_net PUBLIC $<BUILD_INTERFACE:${SRUN_PUBLIC_INCLUDE_DIRS}> $<INSTALL_INTERFACE:include>)
+target_include_directories(srun_net PRIVATE ${SRUN_PRIVATE_INCLUDE_DIR})

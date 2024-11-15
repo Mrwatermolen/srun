@@ -3,7 +3,7 @@
 
 #include <asio.hpp>
 
-#if SRUN_SSL_ENABLED
+#ifdef SRUN_SSL_ENABLED
 #include <asio/ssl.hpp>
 #endif
 
@@ -12,11 +12,14 @@
 namespace srun::net {
 
 class Session : public std::enable_shared_from_this<Session> {
+  inline static asio::io_context io_context;
+#ifdef SRUN_SSL_ENABLED
+  inline static asio::ssl::context ssl_context{asio::ssl::context::tlsv12};
+#endif
  public:
-  explicit Session(asio::io_context &io_context)
-      : _io_context{io_context},
+  Session()
+      :
 #if SRUN_SSL_ENABLED
-        _ssl_context{asio::ssl::context::sslv23},
         _socket{_io_context, _ssl_context}
 #else
         _socket{_io_context}
@@ -38,11 +41,7 @@ class Session : public std::enable_shared_from_this<Session> {
 
   auto &readBuffer() const { return _read_buffer; }
 
-  auto disconnect() -> void;
-
   auto setConnectCallback(
-      std::function<void(std::shared_ptr<Session>)> callback) -> void;
-  auto setDisconnectCallback(
       std::function<void(std::shared_ptr<Session>)> callback) -> void;
 
   auto connect(std::string_view host, std::string_view service) -> void;
@@ -52,9 +51,9 @@ class Session : public std::enable_shared_from_this<Session> {
   auto send(const Buffer &buffer) -> void;
 
  private:
-  asio::io_context &_io_context;
+  asio::io_context &_io_context{io_context};
 #if SRUN_SSL_ENABLED
-  asio::ssl::context _ssl_context;
+  asio::ssl::context &_ssl_context{ssl_context};
   asio::ssl::stream<asio::ip::tcp::socket> _socket;
 #else
   asio::ip::tcp::socket _socket;
@@ -62,7 +61,6 @@ class Session : public std::enable_shared_from_this<Session> {
   Buffer _read_buffer;
   Buffer _write_buffer;
   std::function<void(std::shared_ptr<Session>)> _connect_callback;
-  std::function<void(std::shared_ptr<Session>)> _disconnect_callback;
 };
 
 }  // namespace srun::net

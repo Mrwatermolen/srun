@@ -1,4 +1,4 @@
-#include "core/common.h"
+#include "srun/common.h"
 
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -289,6 +289,18 @@ ChallengeResponse::ChallengeResponse(std::string_view data) {
     _expire = json["expire"];
   } catch (const std::exception &e) {
     std::cerr << "parse challenge response error: " << e.what() << "\n";
+  }
+}
+
+LoginResponse::LoginResponse(std::string_view data) {
+  _err_response = ErrResponse{data};
+  if (!_err_response.ok()) {
+    return;
+  }
+
+  auto json = nlohmann::json::parse(data);
+  if (json.contains("access_token")) {
+    _access_token = json["access_token"];
   }
 }
 

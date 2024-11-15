@@ -1,16 +1,23 @@
 #ifndef __SRUN_CORE_SRUN_H__
 #define __SRUN_CORE_SRUN_H__
 
-#include <string_view>
+#include <srun/common.h>
 
-#include "core/common.h"
-#include "net/http_request.h"
-#include "net/http_response.h"
-#include "net/http_session.h"
+#include <memory>
+#include <string>
+#include <string_view>
 
 namespace srun {
 
-class SRunClient {
+namespace net {
+
+class HttpRequest;
+class HttpResponse;
+class HttpSession;
+
+}  // namespace net
+
+class SrunClient {
  public:
   static constexpr std::string_view CHALLENGE_PATH = "/cgi-bin/get_challenge";
   static constexpr std::string_view INFO_PATH = "/cgi-bin/rad_user_info";
@@ -20,23 +27,29 @@ class SRunClient {
   static constexpr std::string_view DEFAULT_OS_NAME = "Linux";
 
  public:
-  SRunClient() = default;
-
   auto init(std::string_view config_path) -> void;
-
-  auto init(std::string_view host, std::string_view port,
-            std::string_view username, std::string_view password,
-            bool ssl = false) -> void;
 
   auto ssl() const { return _ssl; }
 
-  auto needAcId() const { return _need_ac_id; }
+  auto setSsl(bool ssl) -> void { _ssl = ssl; }
 
-  auto needIp() const { return _need_ip; }
+  auto autoAcId() const { return _auto_ac_id; }
+
+  auto setAutoAcId(bool auto_ac_id) -> void { _auto_ac_id = auto_ac_id; }
+
+  auto autoIp() const { return _auto_ip; }
+
+  auto setAutoIp(bool auto_ip) -> void { _auto_ip = auto_ip; }
 
   auto host() const { return _host; }
 
+  auto setHost(std::string_view host) -> void { _host = host; }
+
   auto port() { return _port; }
+
+  auto setPort(std::string_view port) -> void { _port = port; }
+
+  auto protocol() const { return _ssl ? "https" : "http"; }
 
   auto username() const { return _username; }
 
@@ -49,14 +62,14 @@ class SRunClient {
   auto ip() const { return _ip; }
 
   auto setIp(std::string_view ip) -> void {
-    _need_ip = false;
+    _auto_ip = false;
     _ip = ip;
   }
 
   auto acId() const { return _ac_id; }
 
   auto setAcId(std::size_t ac_id) -> void {
-    _need_ac_id = false;
+    _auto_ac_id = false;
     _ac_id = ac_id;
   }
 
@@ -82,9 +95,17 @@ class SRunClient {
     _double_stack = double_stack;
   }
 
+  auto accessToken() const { return _access_token; }
+
+  auto setAccessToken(std::string_view access_token) -> void {
+    _access_token = access_token;
+  }
+
   auto fetchAcId() -> int;
 
   auto fetchIp() -> std::string;
+
+  auto fetchUsername() -> std::string;
 
   auto checkOnline() -> bool;
 
@@ -96,25 +117,27 @@ class SRunClient {
 
   auto logout() -> void;
 
-  auto api(std::string_view path,
-           net::HttpRequest request) -> net::HttpResponse;
+  auto get(std::string_view path, net::HttpRequest request)
+      -> net::HttpResponse;
+
+  auto api(std::string_view path, net::HttpRequest request)
+      -> net::HttpResponse;
 
  private:
   auto newHttpClient() -> std::shared_ptr<net::HttpSession>;
 
   auto paramI(std::string_view username, std::string_view password,
-              std::string_view ip, int ac_id,
-              std::string_view token) -> std::string;
+              std::string_view ip, int ac_id, std::string_view token)
+      -> std::string;
 
  private:
-  asio::io_context _io_context;
-
   bool _ssl{false};
-  bool _need_ac_id{true};
-  bool _need_ip{true};
+  bool _auto_ac_id{true};
+  bool _auto_ip{true};
 
   std::string _host;
   std::string _port;
+
   std::string _username;
   std::string _password;
 
@@ -125,6 +148,8 @@ class SRunClient {
   std::string _os{DEFAULT_OS};
   std::string _os_name{DEFAULT_OS_NAME};
   int _double_stack{0};
+
+  std::string _access_token;
 };
 
 }  // namespace srun

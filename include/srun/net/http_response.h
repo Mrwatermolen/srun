@@ -10,9 +10,9 @@
 namespace srun::net {
 
 class HttpResponse {
-  static constexpr inline std::string_view CRLF = "\r\n";
-  static constexpr inline std::string_view COLON = ": ";
-  static constexpr inline std::string_view SPACE = " ";
+  static constexpr std::string_view CRLF = "\r\n";
+  static constexpr std::string_view COLON = ": ";
+  static constexpr std::string_view SPACE = " ";
 
  public:
   enum StatusCode : std::uint16_t {
@@ -180,7 +180,8 @@ class HttpResponse {
     if (code_pos == std::string::npos) {
       return code_pos;
     }
-    auto code = std::stoi(status_line.substr(version_pos + 1, code_pos).data());
+    auto code =
+        std::stoi(std::string(status_line.substr(version_pos + 1, code_pos)));
     setStatusCode(static_cast<StatusCode>(code));
 
     setStatusMessage(status_line.substr(code_pos + 1));

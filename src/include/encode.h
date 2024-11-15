@@ -73,7 +73,7 @@ inline auto encode(const std::string_view key,
   std::uint64_t right = v.back();
   std::uint64_t m = 0;
 
-  auto count = 6 + 52 / len;
+  auto count = 6 + (52 / len);
 
   for (std::size_t i = 0; i < count; ++i) {
     auto f = (0x8CE0D9BF | 0x731F2640);

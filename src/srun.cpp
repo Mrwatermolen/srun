@@ -1,69 +1,103 @@
-#include "core/srun.h"
+#include "srun/srun.h"
 
+#include <algorithm>
+#include <asio.hpp>
+#include <cstdint>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <nlohmann/json.hpp>
 #include <regex>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 
-#include "core/common.h"
-#include "core/encode.h"
-#include "core/util.h"
-#include "net/http_request.h"
-#include "net/http_response.h"
+#ifdef SRUN_SSL_ENABLED
+#include <asio/ssl.hpp>
+#endif
+
+#include "encode.h"
+#include "net/http_session.h"
+#include "srun/common.h"
+#include "srun/exception.h"
+#include "srun/net/http_request.h"
+#include "srun/net/http_response.h"
+#include "util.h"
 
 namespace srun {
 
-auto SRunClient::init(std::string_view config_path) -> void {
-  if (!std::filesystem::exists(config_path) ||
-      !std::filesystem::is_regular_file(config_path)) {
-    std::stringstream ss;
-    ss << "SRunClient init error: can't find config file: " << config_path;
-    throw std::runtime_error(ss.str());
+auto SrunClient::init(std::string_view config_path) -> void {
+  if (!std::filesystem::exists(config_path)) {
+    throw SrunException(std::format("Can't find config file: {}", config_path));
   }
 
-  auto ifs = std::ifstream{config_path.data()};
+  if (!std::filesystem::is_regular_file(config_path)) {
+    throw SrunException(
+        std::format("Config file is not a regular file: {}", config_path));
+  }
+
+  auto ifs = std::ifstream{std::string{config_path}};
   if (!ifs.is_open()) {
     std::stringstream ss;
-    ss << "SRunClient init error: can't open config file: " << config_path;
-    throw std::runtime_error(ss.str());
+    ss << "Can't open config file: " << config_path;
+    throw SrunException(ss.str());
   }
 
   auto json = nlohmann::json{};
-  ifs >> json;
 
   try {
-    auto protocol = json.at("protocol");
-    if (protocol == "https") {
-#ifndef SRUN_SSL_ENABLED
-      throw std::runtime_error("SRunClient init error: SSL don't support.");
-#endif
-      _ssl = true;
-    }
+    ifs >> json;
+  } catch (const nlohmann::json::parse_error& e) {
+    throw SrunException(
+        std::format("File {} parse error: {}", config_path, e.what()));
+  }
 
-    unsigned port = json.at("port");
-    _port = std::to_string(port);
-    _host = json.at("host");
-    _username = json.at("username");
-    _password = json.at("password");
-  } catch (const std::out_of_range& e) {
-    throw std::runtime_error(
-        std::string(
-            "SRunClient init error: missing required field in config. ") +
-        e.what());
+  if (!json.contains("host")) {
+    throw SrunException("Missing required field host in config file");
+  }
+
+  if (json.contains("protocol")) {
+    std::string protocol = json["protocol"];
+    _ssl = std::ranges::equal(
+        protocol, std::string("https"),
+        [](char a, char b) { return std::tolower(a) == std::tolower(b); });
+
+#ifndef SRUN_SSL_ENABLED
+    if (_ssl) {
+      throw SrunSSLDisabledException{};
+    }
+#endif
+  }
+
+  _host = json["host"];
+
+  if (json.contains("port")) {
+    _port = std::to_string(static_cast<std::uint16_t>(json["port"]));
+  } else {
+    _port = (_ssl ? "443" : "80");
+  }
+
+  if (json.contains("username")) {
+    _username = json["username"];
+  }
+
+  if (json.contains("password")) {
+    _password = json["password"];
   }
 
   if (json.contains("ip")) {
-    _need_ip = false;
+    _auto_ip = false;
     _ip = json["ip"];
+  } else {
+    _auto_ip = true;
   }
 
   if (json.contains("ac_id")) {
-    _need_ac_id = false;
+    _auto_ac_id = false;
     _ac_id = json["ac_id"];
+  } else {
+    _auto_ac_id = true;
   }
 
   if (json.contains("os")) {
@@ -75,28 +109,17 @@ auto SRunClient::init(std::string_view config_path) -> void {
   }
 }
 
-auto SRunClient::init(std::string_view host, std::string_view port,
-                      std::string_view username, std::string_view password,
-                      bool ssl) -> void {
-  _host = host;
-  _port = port;
-  _username = username;
-  _password = password;
-  _ssl = ssl;
-
-  if (_ssl) {
+auto SrunClient::fetchAcId() -> int {
 #ifndef SRUN_SSL_ENABLED
-    throw std::runtime_error("SRunClient init error: SSL don't support.");
-#endif
+  if (_ssl) {
+    throw SrunSSLDisabledException{};
   }
-}
-
-auto SRunClient::fetchAcId() -> int {
+#endif
   int ac_id = 1;  // default 1
   auto session = newHttpClient();
   auto request = net::HttpRequest{};
-  request.setMethod(srun::net::HttpRequest::Method::GET);
-  request.setVersion(srun::net::HttpRequest::Version::HTTP_1_1);
+  request.setMethod(net::HttpRequest::Method::GET);
+  request.setVersion(net::HttpRequest::Version::HTTP_1_1);
   request.addHeader("Host", _host);
   request.setPath("/");
   session->connect(_host, _port);
@@ -162,16 +185,27 @@ auto SRunClient::fetchAcId() -> int {
   return ac_id;
 }
 
-auto SRunClient::fetchIp() -> std::string {
+auto SrunClient::fetchIp() -> std::string {
   auto info = getInfo();
   if (info.errResponse().ecode() != 0) {
-    throw std::runtime_error("fetch ip error: " + info.errResponse().errMsg());
+    throw SrunException(
+        std::format("Fetch ip error: {}", info.errResponse().errMsg()));
   }
 
   return info.clientIp();
 }
 
-auto SRunClient::checkOnline() -> bool {
+auto SrunClient::fetchUsername() -> std::string {
+  auto info = getInfo();
+  if (info.errResponse().ecode() != 0) {
+    throw SrunException(
+        std::format("Fetch username error: {}", info.errResponse().errMsg()));
+  }
+
+  return info.username();
+}
+
+auto SrunClient::checkOnline() -> bool {
   try {
     auto request = net::HttpRequest{};
     auto unix_time = std::chrono::duration_cast<std::chrono::seconds>(
@@ -182,20 +216,21 @@ auto SRunClient::checkOnline() -> bool {
     auto&& response = api(INFO_PATH, request);
 
     if (response.statusCode() != net::HttpResponse::OK) {
-      std::cerr << "check online error: " << response.statusMessage() << "\n";
+      std::cerr << "check online error: " << response.statusMessage()
+                << "\n";  // TODO(franzero): comment this
       return false;
     }
 
     auto info = InfoResponse{response.body()};
     return info.ok();
   } catch (const asio::system_error& e) {
-    std::cerr << "check online error: " << e.what() << "\n";
+    throw SrunException(std::format("Network error: {}", e.what()));
   }
 
   return false;
 }
 
-auto SRunClient::getInfo() -> InfoResponse {
+auto SrunClient::getInfo() -> InfoResponse {
   auto request = net::HttpRequest{};
   auto unix_time = std::chrono::duration_cast<std::chrono::seconds>(
                        std::chrono::system_clock::now().time_since_epoch())
@@ -205,16 +240,21 @@ auto SRunClient::getInfo() -> InfoResponse {
   auto&& response = api(INFO_PATH, request);
 
   if (response.statusCode() != net::HttpResponse::OK) {
-    std::cerr << "check online error: " << response.statusMessage() << "\n";
-    throw std::runtime_error("get info error");
+    throw SrunHttpException(
+        response.statusCode(),
+        std::format("{} in getInfo", response.statusMessage()));
   }
 
   return InfoResponse{response.body()};
 }
 
-auto SRunClient::getChallenge() -> ChallengeResponse {
+auto SrunClient::getChallenge() -> ChallengeResponse {
   if (_ip.empty()) {
-    throw std::runtime_error("get challenge error: no ip");
+    throw SrunException("Get challenge error: no ip");
+  }
+
+  if (_username.empty()) {
+    throw SrunException("Get challenge error: no username");
   }
 
   auto unix_time = std::chrono::duration_cast<std::chrono::seconds>(
@@ -228,31 +268,35 @@ auto SRunClient::getChallenge() -> ChallengeResponse {
 
   auto&& response = api(CHALLENGE_PATH, request);
   if (response.statusCode() != net::HttpResponse::OK) {
-    throw std::runtime_error("get challenge error: " +
-                             response.statusMessage());
+    throw SrunHttpException(
+        response.statusCode(),
+        std::format("{} in getChallenge", response.statusMessage()));
   }
 
   return ChallengeResponse{response.body()};
 }
 
-auto SRunClient::login() -> void {
-  if (_need_ac_id) {
+auto SrunClient::login() -> void {
+  if (_auto_ac_id) {
     _ac_id = fetchAcId();
   }
 
-  if (_need_ip) {
+  if (_auto_ip) {
     _ip = fetchIp();
   }
 
   if (_ip.empty()) {
-    throw std::runtime_error("login error: no ip");
+    throw SrunException("Login error: no ip");
+  }
+
+  if (_username.empty()) {
+    throw SrunException("Login error: no username");
   }
 
   auto challenge = getChallenge();
 
   if (!challenge.ok()) {
-    throw std::runtime_error("login error: " +
-                             challenge.errResponse().errMsg());
+    throw SrunException("Login error: " + challenge.errResponse().errMsg());
   }
 
   auto token = challenge.challenge();
@@ -291,18 +335,27 @@ auto SRunClient::login() -> void {
   request.setPath(AUTH_PATH);
 
   if (response.statusCode() != net::HttpResponse::OK) {
-    throw std::runtime_error("login error: " + response.statusMessage());
+    throw SrunHttpException(
+        response.statusCode(),
+        std::format("{} in login", response.statusMessage()));
   }
 
-  auto err_response = ErrResponse{response.body()};
-  if (!err_response.ok()) {
-    throw std::runtime_error("login error: " + err_response.errMsg());
+  auto login_response = LoginResponse{response.body()};
+  if (!login_response.ok()) {
+    throw SrunException("Login error: " +
+                        login_response.errResponse().errMsg());
   }
+
+  _access_token = login_response.accessToken();
 }
 
-auto SRunClient::logout() -> void {
+auto SrunClient::logout() -> void {
   if (_ip.empty()) {
     _ip = fetchIp();
+  }
+
+  if (_username.empty()) {
+    _username = fetchUsername();
   }
 
   auto unix_time = std::chrono::duration_cast<std::chrono::seconds>(
@@ -318,31 +371,43 @@ auto SRunClient::logout() -> void {
 
   auto&& response = api(AUTH_PATH, request);
   if (response.statusCode() != net::HttpResponse::OK) {
-    throw std::runtime_error("logout error: " + response.statusMessage());
+    throw SrunHttpException(
+        response.statusCode(),
+        std::format("{} in logout", response.statusMessage()));
   }
 
   auto err_response = ErrResponse{response.body()};
 
   if (!err_response.ok() &&
       (err_response.errorMsg() != "You are not online.")) {
-    throw std::runtime_error("logout error: " + err_response.errMsg());
+    throw SrunException("Logout error: " + err_response.errMsg());
   }
 }
 
-auto SRunClient::api(std::string_view path,
-                     net::HttpRequest request) -> net::HttpResponse {
-  request.setMethod(net::HttpRequest::Method::GET);
-  request.setPath(path);
-  request.setVersion(net::HttpRequest::Version::HTTP_1_1);
-  request.addHeader("Host", _host);
-  request.addQuery("callback", "null");
+auto SrunClient::get(std::string_view path, net::HttpRequest request)
+    -> net::HttpResponse {
+#ifndef SRUN_SSL_ENABLED
+  if (_ssl) {
+    throw SrunSSLDisabledException{};
+  }
+#endif
 
-  auto buffer = net::Buffer{};
-  buffer.append(request.encodeBytes());
+  request.setMethod(net::HttpRequest::Method::GET);
+  request.addHeader("Host", _host);
+  request.setVersion(net::HttpRequest::Version::HTTP_1_1);
+  request.setPath(path);
 
   auto session = newHttpClient();
   session->connect(_host, _port);
-  auto&& res = session->request(request);
+  return session->request(request);
+}
+
+auto SrunClient::api(std::string_view path, net::HttpRequest request)
+    -> net::HttpResponse {
+  request.addQuery("callback", "null");
+
+  auto&& res = get(path, request);
+
   // remove "null" and "(" and ")"
   if (5 < res.body().size() &&
       (res.body().substr(0, 5) == "null(" && res.body().back() == ')')) {
@@ -351,11 +416,12 @@ auto SRunClient::api(std::string_view path,
 
   return res;
 }
-auto SRunClient::newHttpClient() -> std::shared_ptr<net::HttpSession> {
-  auto session = std::make_shared<net::HttpSession>(_io_context);
+auto SrunClient::newHttpClient() -> std::shared_ptr<net::HttpSession> {
+  auto session = std::make_shared<net::HttpSession>();
+
   if (_ssl) {
 #ifndef SRUN_SSL_ENABLED
-    throw std::runtime_error("new https session error: SSL don't support.");
+    throw SrunSSLDisabledException{};
 #else
     session->setConnectCallback(
         [this](const std::shared_ptr<net::Session>& session) {
@@ -366,9 +432,9 @@ auto SRunClient::newHttpClient() -> std::shared_ptr<net::HttpSession> {
   return session;
 }
 
-auto SRunClient::paramI(std::string_view username, std::string_view password,
-                        std::string_view ip, int ac_id,
-                        std::string_view token) -> std::string {
+auto SrunClient::paramI(std::string_view username, std::string_view password,
+                        std::string_view ip, int ac_id, std::string_view token)
+    -> std::string {
   std::string info;
   info += "{";
   info += R"("username":")";

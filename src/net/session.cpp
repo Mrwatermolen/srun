@@ -1,26 +1,21 @@
+#include "net/session.h"
+
 #include <iostream>
 
 #include "net/buffer.h"
-#include "net/session.h"
 
 namespace srun::net {
-
-auto Session::disconnect() -> void {}
 
 auto Session::setConnectCallback(
     std::function<void(std::shared_ptr<Session>)> callback) -> void {
   _connect_callback = std::move(callback);
 }
 
-auto Session::setDisconnectCallback(
-    std::function<void(std::shared_ptr<Session>)> callback) -> void {
-  _disconnect_callback = std::move(callback);
-}
-
 auto Session::connect(std::string_view host, std::string_view service) -> void {
   auto self = shared_from_this();
   auto resolver = asio::ip::tcp::resolver{_io_context};
-  auto query = asio::ip::tcp::resolver::query{host.data(), service.data()};
+  auto query =
+      asio::ip::tcp::resolver::query{std::string(host), std::string(service)};
 
   auto endpoints = resolver.resolve(query);
 
@@ -31,7 +26,9 @@ auto Session::connect(std::string_view host, std::string_view service) -> void {
 #endif
 
   socket.connect(*endpoints.begin());
-  _connect_callback(shared_from_this());
+  if (_connect_callback) {
+    _connect_callback(shared_from_this());
+  }
 }
 
 auto Session::readSome() -> Buffer & {

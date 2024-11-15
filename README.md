@@ -4,33 +4,71 @@ SRun authentication login
 
 ## Usage
 
-`username`, `password` and `host` are used to login
+Basic usage:
+
+run with options
 
 ```bash
-srun --username 123456 --password 7890 --host host
+srun_cli --action <action> <some options>
 ```
+
+or run with config file
+
+```bash
+srun_cli --action <action> --config <path to config.json>
+```
+
+### Action
+
+* Login
+
+  run with `--action 0` to login.
+
+  `username`, `password` and `host` are required fields.
+
+  ```bash
+  srun_cli --action 0 --username 123456 --password 7890 --host host
+  ```
+
+  or run witch config file
+
+  ```bash
+  srun_cli --action 0 --config <path to config.json>
+  ```
+
+* Logout
+
+  run with `--action 1` to logout.
+
+  `host` is required field.
+
+  ```bash
+  srun_cli --action 1 --host host
+  ```
+
+* Info
+  
+    run with `--action 2` to get user information.
+  
+    `host` is required field.
+  
+    ```bash
+    srun_cli --action 2 --host host
+    ```
 
 Use `--help` to get more information
-
----
-
-`config.json` file is used to login
-
-```bash
-srun --config <path to config.json>
-```
 
 ### Config file
 
 Json format
 
 Required fields:
-- `username` the username of the account. `string`
-- `password` the password of the account. `string`
 - `host` the host of the server. `string`
-- `port` the port of the server. `int`
 
 Optional fields:
+- `username` the username of the account. `string`. required when action is login
+- `password` the password of the account. `string`. required when action is login
+- `port` the port of the server. `int`
 - `protocol` the protocol of the server. Type is `string` ("http" or "https") (default: "http")
 - `ip` the client ip address. Type is `string` (default: "") (emptying this field to automatically obtain the ip address)
 - `ac_id`. Type is `int` (default: 1)
@@ -76,6 +114,14 @@ If you need to support https, you need to install OpenSSL on your system. Then u
 cmake -DSRUN_SSL_ENABLED=ON -DCMAKE_BUILD_TYPE=Release -B build
 cmake --build build
 ``` 
+
+### Build options
+
+`SRUN_SSL_ENABLED` - enable support for https (default: OFF)
+
+`SRUN_ENABLED_INSTALL_LIB` - enable install lib (default: OFF)
+
+`SRUN_ENABLED_INSTALL_BIN` - enable install bin (default: ON)
 
 ## Acknowledgements
 

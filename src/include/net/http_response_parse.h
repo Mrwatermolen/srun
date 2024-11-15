@@ -5,15 +5,14 @@
 #include <limits>
 
 #include "net/buffer.h"
-#include "net/http_response.h"
-
+#include "srun/net/http_response.h"
 
 namespace srun::net {
 
 class HttpResponseParse {
-  static constexpr inline std::string_view CRLF = "\r\n";
-  static constexpr inline std::string_view COLON = ": ";
-  static constexpr inline std::string_view SPACE = " ";
+  static constexpr std::string_view CRLF = "\r\n";
+  static constexpr std::string_view COLON = ": ";
+  static constexpr std::string_view SPACE = " ";
 
  public:
   enum class Status : std::uint8_t { INVALID, StatusLine, Headers, Body, OK };
